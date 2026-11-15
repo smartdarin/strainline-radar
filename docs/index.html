@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Read-only explorer of real NISAR radar evidence over the Kalka–Shimla railway corridor.">
+  <title>StrainLine · NISAR Evidence Explorer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top"><span class="mark" aria-hidden="true">S</span><span><strong>STRAINLINE</strong><small>GROUND CONTEXT INTELLIGENCE</small></span></a>
+    <div class="top-meta"><span>PUBLIC DEMO · READ ONLY</span><b>REAL NISAR L-BAND</b></div>
+  </header>
+  <main id="top">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">FIELD NOTE 01 · KALKA—SHIMLA RAILWAY</p>
+        <h1>One railway.<br><em>One radar scene.</em></h1>
+        <p class="lede">Explore the actual radar evidence and its quality screen. This observation does not establish ground movement.</p>
+      </div>
+      <div class="pair-card">
+        <span class="badge">PROVISIONAL · HH</span>
+        <p><small>REFERENCE</small><b id="referenceDate">—</b></p>
+        <p><small>SECONDARY</small><b id="secondaryDate">—</b></p>
+        <span class="band">NISAR L-BAND · 12-DAY PAIR</span>
+      </div>
+    </section>
+
+    <aside class="warnings" aria-label="Scientific warnings">
+      <div><b>PHASE SIGN · UNRESOLVED</b><span>Colours encode phase in radians, not toward/away motion or displacement.</span></div>
+      <div><b>QA IDENTIFICATION · FAILED</b><span>The exact failed field and its effect remain unresolved.</span></div>
+    </aside>
+
+    <section class="workspace" aria-label="Radar evidence explorer">
+      <div class="scene-head">
+        <div><p class="eyebrow">ACTUAL GUNW SOURCE CELLS · EPSG:<span id="epsg">—</span></p><h2 id="layerHeading">Unwrapped phase</h2></div>
+        <label class="layer-picker">DISPLAY LAYER
+          <select id="layerSelect" aria-label="Display radar layer">
+            <option value="phase">Phase · radians</option>
+            <option value="coherence">Coherence · 0–1</option>
+            <option value="components">Connected components</option>
+            <option value="validity">Combined validity screen</option>
+          </select>
+        </label>
+      </div>
+      <div class="scene-grid">
+        <div class="map-shell">
+          <div class="canvas-frame"><canvas id="radarCanvas" aria-label="Actual NISAR radar preview with railway overlay; click to inspect a nearby railway-touched source cell"></canvas></div>
+          <div class="map-key"><span><i class="rail-key"></i>OSM railway centerline</span><span><i class="cell-key"></i>Selected touched cell</span><span id="mapMessage">Loading real-data preview…</span></div>
+        </div>
+        <aside class="inspector">
+          <p class="eyebrow">SYNCHRONIZED SOURCE-CELL INSPECTION</p>
+          <h3 id="cellTitle">Choose a railway location</h3>
+          <p class="hint">Click the mapped railway or radar scene. The inspector selects the nearest cell touched by the mapped centerline.</p>
+          <dl>
+            <dt>GRID ROW · COLUMN</dt><dd id="cellGrid">—</dd>
+            <dt>WGS84 LOCATION</dt><dd id="cellCoords">—</dd>
+            <dt>PHASE</dt><dd id="cellPhase">—</dd>
+            <dt>COHERENCE</dt><dd id="cellCoherence">—</dd>
+            <dt>CONNECTED COMPONENT</dt><dd id="cellComponent">—</dd>
+            <dt>RAW MASK</dt><dd id="cellMask">—</dd>
+            <dt>COMBINED SCREEN</dt><dd id="cellValidity">—</dd>
+          </dl>
+          <p class="meaning" id="layerMeaning">Phase is shown as numerical radians. Its physical toward/away sign is unresolved.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="coverage">
+      <div><p class="eyebrow">RAILWAY-TOUCHED RADAR CELLS</p><strong id="validPercent">—</strong><span>pass the combined validity screen</span></div>
+      <div class="count"><b id="validCount">—</b><small>pass</small></div>
+      <div class="count invalid"><b id="invalidCount">—</b><small>fail</small></div>
+      <p class="coverage-note">Radar observability under this screen is not movement coverage.</p>
+    </section>
+
+    <section class="facts" aria-label="Product metadata">
+      <article><small>PRODUCT</small><b id="granule">—</b><span>NISAR L2 GUNW · provisional</span></article>
+      <article><small>ACQUISITION PAIR</small><b id="dates">—</b><span>Reference → secondary</span></article>
+      <article><small>ORBIT GEOMETRY</small><b id="orbit">—</b><span>Pass · look direction</span></article>
+      <article><small>GRID</small><b id="grid">—</b><span>CRS · pixel spacing</span></article>
+    </section>
+
+    <details class="limitations" open>
+      <summary>Scientific limitations</summary>
+      <ul id="limitationsList"></ul>
+      <p>No displacement conversion, railway risk score, damage detection or safety classification is produced.</p>
+    </details>
+
+    <footer>
+      <div><b>STRAINLINE</b><span>Radar observability ≠ ground movement</span></div>
+      <p>Source: NASA/ASF NISAR GUNW · Corridor: © OpenStreetMap contributors, relation 331109 · Granule G4375022208-ASF</p>
+      <small>Static Pages demo generated from the downloaded HDF5 and its CMR sidecar. No synthetic observations.</small>
+    </footer>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+asf-search==14.1.0
+shapely>=2.0,<3
+pyproj>=3.6,<4

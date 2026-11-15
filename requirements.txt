@@ -1,0 +1,3 @@
+# Convenience install. For smaller deployments install the relevant file directly.
+-r requirements-science.txt
+-r requirements-api.txt
