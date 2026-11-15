@@ -23,7 +23,9 @@ async function api(path, options = {}) {
   return payload;
 }
 api('/api/health').then(health => {
-  $('#dataState').textContent = health.real_nisar_loaded ? 'LOCAL API · NISAR READY' : 'LOCAL API · CONNECTED';
+  $('#dataState').textContent = health.data_mode === 'packaged_real_evidence'
+    ? 'PUBLIC API · REAL EVIDENCE PACKAGE'
+    : health.real_nisar_loaded ? 'LOCAL API · NISAR READY' : 'LOCAL API · CONNECTED';
   $('#apiState').classList.toggle('api-ready', true);
 }).catch(() => { $('#dataState').textContent = 'LOCAL API · OFFLINE'; $('#apiState').classList.add('api-offline'); });
 
@@ -105,8 +107,10 @@ function setRadarMetadata(info) {
   $('#radarMd5').textContent = `${info.provenance.cmr_md5 || 'unavailable'} · ${info.provenance.cmr_checksum_algorithm || 'CMR checksum'}`;
   $('#radarSha').textContent = info.provenance.sha256_recorded || 'unavailable';
   const integrityOkay = info.provenance.hdf5_readable && info.provenance.granule_identity_matches && info.provenance.size_matches_cmr && info.provenance.sha256_receipt_matches_phase4_record;
-  $('#radarIntegrityStatus').textContent = integrityOkay ? 'IDENTITY · SIZE VERIFIED · SHA-256 RECEIPT' : 'INTEGRITY REVIEW REQUIRED';
-  $('#radarIntegrityStatus').className = `badge ${integrityOkay ? 'loaded' : 'candidate'}`;
+  const packageOkay = Boolean(info.provenance.evidence_package_verified);
+  $('#radarIntegrityStatus').textContent = packageOkay ? 'PACKAGE SHA-256 VERIFIED · HDF5 LOCAL ONLY'
+    : integrityOkay ? 'IDENTITY · SIZE VERIFIED · SHA-256 RECEIPT' : 'INTEGRITY REVIEW REQUIRED';
+  $('#radarIntegrityStatus').className = `badge ${integrityOkay || packageOkay ? 'loaded' : 'candidate'}`;
   const list = $('#radarLimitations'); list.replaceChildren();
   for (const limitation of info.limitations) { const item = document.createElement('li'); item.textContent = limitation; list.append(item); }
   const coverage = info.route_coverage;
@@ -121,7 +125,8 @@ function setRadarMetadata(info) {
 async function loadRadarLayer() {
   if (!radarEvidenceInfo) return;
   const layer = $('#radarLayer').value;
-  const loading = $('#radarLoading'); loading.hidden = false; loading.textContent = 'Rendering actual HDF5 cells…';
+  const packaged = Boolean(radarEvidenceInfo.provenance.evidence_package_verified);
+  const loading = $('#radarLoading'); loading.hidden = false; loading.textContent = packaged ? 'Loading packaged real NISAR evidence…' : 'Rendering actual HDF5 cells…';
   try {
     const response = await fetch(`/api/radar-evidence/preview/${encodeURIComponent(layer)}`);
     if (!response.ok) throw new Error(await response.text());
@@ -139,7 +144,9 @@ async function loadRadarLayer() {
     $('#radarLayerExplanation').textContent = explanations[layer];
     const low = response.headers.get('X-Value-Min'), high = response.headers.get('X-Value-Max');
     $('#radarLegendText').textContent = layer === 'phase' ? `Displayed range ${low} to ${high} radians · numerical phase, not toward/away` : layer === 'coherence' ? `Displayed range ${low} to ${high} · coherence magnitude, dimensionless` : layer === 'components' ? '0 = no component · green = nonzero component label · magenta = fill; labels are not movement intensity' : 'Green = passes the combined quality screen · dark = does not pass';
-    $('#radarPreviewStatus').textContent = layer === 'phase'
+    $('#radarPreviewStatus').textContent = packaged
+      ? `Actual NISAR ${layer} preview packaged from the source HDF5; display samples every ${infoFactor()} source pixels. Exact railway-touched source cells can be inspected. Arbitrary raster-cell values and full-product operations require the original HDF5 locally.`
+      : layer === 'phase'
       ? `Actual HDF5 phase cells, sampled every ${infoFactor()} pixels for display · clipped to the preview 2nd–98th percentile · radians. Color does not encode displacement sign.`
       : `Actual HDF5 ${layer} cells, sampled every ${infoFactor()} pixels for display. Click to inspect a source-grid cell.`;
     const loaded = new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; });

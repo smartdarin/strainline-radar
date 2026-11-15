@@ -1,0 +1,30 @@
+{
+  "source_granule": "NISAR_L2_PR_GUNW_032_055_A_017_033_4000_SH_20261004T000450_20261004T000524_20261016T000450_20261016T000524_P05023_N_F_J_001",
+  "source_cmr_concept_id": "G4375022208-ASF",
+  "source_sha256_from_download_receipt": "459e67aaf84207f68a5b825c825c4d36952ac709168f636e06f3da95192bf9f2",
+  "source_hdf5_not_included": true,
+  "railway_cells": 1478,
+  "passing_cells": 1471,
+  "artifacts": {
+    "coherence.png": {
+      "size_bytes": 1053489,
+      "sha256": "03123812affffa872e0f2587955c3925bfab2fde6b51f92b503720d234a3f2f9"
+    },
+    "components.png": {
+      "size_bytes": 37238,
+      "sha256": "a61935694c6af1ae9fd3049ff12ecd64b2bb7d9aff38293aa3adbacc86a1798f"
+    },
+    "evidence.json": {
+      "size_bytes": 914926,
+      "sha256": "38cd0bb128d2d5d9d2f36c5cdcfd2e922727db3cf41e464b2cc73c02cef0a54a"
+    },
+    "phase.png": {
+      "size_bytes": 747529,
+      "sha256": "9e9981741ade814cd9d9e6f34f963ad6c260a0b973dc968d03bc692218b8336e"
+    },
+    "validity.png": {
+      "size_bytes": 36639,
+      "sha256": "fcd67b0665821373b5eae09460919af6f6cec4ad173963e7e2131b0dcdc40a6e"
+    }
+  }
+}

@@ -6,9 +6,12 @@ does not perform a phase-to-displacement conversion or modify the product.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
+import os
 import struct
 import zlib
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +31,7 @@ GRANULE_ID = (
 PRODUCT = ROOT / "data" / "raw" / f"{GRANULE_ID}.h5"
 SIDECAR = ROOT / "data" / "raw" / f"{GRANULE_ID}.h5.cmr.json"
 ROUTE = ROOT / "StrainLine_Data" / "00_AOI" / "route" / "kalka_shimla_railway_osm_relation_331109.geojson"
+DEMO_DATA = ROOT / "docs" / "data"
 BASE = "/science/LSAR/GUNW/grids/frequencyA/unwrappedInterferogram"
 POLARIZATION = "HH"
 FACTOR = 4
@@ -48,6 +52,30 @@ def _required_paths() -> tuple[Path, Path, Path]:
     if not ROUTE.is_file():
         raise FileNotFoundError("The attributed Kalka–Shimla railway GeoJSON is missing.")
     return PRODUCT, SIDECAR, ROUTE
+
+
+@lru_cache(maxsize=1)
+def _packaged_evidence() -> dict[str, Any]:
+    """Read the compact evidence extracted from the real HDF5 at build time."""
+    path = DEMO_DATA / "evidence.json"
+    if not path.is_file():
+        raise FileNotFoundError("Packaged NISAR evidence is missing; rebuild it from the original local HDF5.")
+    manifest_path = DEMO_DATA / "manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for name, record in manifest.get("artifacts", {}).items():
+            asset = DEMO_DATA / name
+            if not asset.is_file() or asset.stat().st_size != record.get("size_bytes"):
+                raise ValueError(f"Packaged evidence artifact {name} is missing or has an unexpected size.")
+            digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+            if digest != record.get("sha256"):
+                raise ValueError(f"Packaged evidence artifact {name} failed its SHA-256 check.")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _using_packaged_evidence() -> bool:
+    configured = os.environ.get("STRAINLINE_PACKAGED_EVIDENCE", "").strip() == "1"
+    return (configured or not PRODUCT.is_file()) and (DEMO_DATA / "evidence.json").is_file()
 
 
 def _read_context() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -97,6 +125,12 @@ def _route_preview_segments(route: dict[str, Any], epsg: int, x: np.ndarray, y: 
 
 def get_evidence_info() -> dict[str, Any]:
     """Return verified local provenance and raster-grid presentation details."""
+    if _using_packaged_evidence():
+        info = json.loads(json.dumps(_packaged_evidence()["evidence"]))
+        info["provenance"]["runtime_mode"] = "Compact package extracted from the source HDF5; source HDF5 is not hosted."
+        info["provenance"]["hdf5_present_on_service"] = False
+        info["provenance"]["evidence_package_verified"] = True
+        return info
     metadata, context, route = _read_context()
     with h5py.File(PRODUCT, "r") as h5:
         x = h5[f"{BASE}/xCoordinates"][:]
@@ -237,6 +271,19 @@ def render_preview(layer: str) -> tuple[bytes, dict[str, str]]:
     """Render a decimated false-color preview from real HDF5 cells."""
     if layer not in {"phase", "coherence", "components", "validity"}:
         raise ValueError("Choose phase, coherence, components, or validity.")
+    if _using_packaged_evidence():
+        path = DEMO_DATA / f"{layer}.png"
+        if not path.is_file():
+            raise FileNotFoundError(f"Packaged {layer} preview is missing; rebuild the public evidence package.")
+        package = _packaged_evidence()
+        bounds = package.get("preview_layer_ranges", {}).get(layer, {})
+        headers = {"X-Radar-Layer": layer, "X-Sample-Factor": str(package["sample_factor"]),
+                   "X-Preview-Width": str(package["evidence"]["preview"]["width"]),
+                   "X-Preview-Height": str(package["evidence"]["preview"]["height"])}
+        if bounds.get("minimum") is not None and bounds.get("maximum") is not None:
+            headers["X-Value-Min"] = str(bounds["minimum"])
+            headers["X-Value-Max"] = str(bounds["maximum"])
+        return path.read_bytes(), headers
     product, _, _ = _required_paths()
     with h5py.File(product, "r") as h5:
         phase_ds = h5[LAYER_PATHS["phase"]]
@@ -265,6 +312,20 @@ def render_preview(layer: str) -> tuple[bytes, dict[str, str]]:
 
 def sample_cell(row: int, col: int) -> dict[str, Any]:
     """Read one actual source-grid cell; values are not displacement."""
+    if _using_packaged_evidence():
+        cell = next((item for item in _packaged_evidence()["railway_cells"]
+                     if item["row"] == row and item["column"] == col), None)
+        if cell is None:
+            raise FileNotFoundError("This deployment packages exact source values only for the 1,478 railway-touched cells. Arbitrary raster-cell inspection requires the original HDF5 locally.")
+        return {
+            "row": cell["row"], "column": cell["column"], "x_m": cell["x_m"], "y_m": cell["y_m"],
+            "projection_epsg": int(_packaged_evidence()["evidence"]["projection_epsg"]),
+            "longitude": cell["longitude"], "latitude": cell["latitude"],
+            "phase_radians": cell["phase_radians"], "coherence": cell["coherence"],
+            "connected_component": cell["connected_component"], "raw_mask": cell["raw_mask"],
+            "validity_screen": cell["passes_screen"],
+            "interpretation": "Actual packaged NISAR source-cell phase in radians and quality values; no displacement conversion.",
+        }
     product, _, _ = _required_paths()
     with h5py.File(product, "r") as h5:
         phase_ds = h5[LAYER_PATHS["phase"]]
@@ -309,6 +370,17 @@ def locate_route_cell(row: int, col: int) -> dict[str, Any]:
     Distance is local to one GeoJSON LineString because the relation is stored
     as 231 separate OSM way geometries; it is not an official railway km post.
     """
+    if _using_packaged_evidence():
+        cells = _packaged_evidence()["railway_cells"]
+        selected = min(cells, key=lambda cell: (cell["row"] - row) ** 2 + (cell["column"] - col) ** 2)
+        sample = sample_cell(selected["row"], selected["column"])
+        sample.update({
+            "route_segment": selected["route_segment"],
+            "distance_along_segment_m": selected["distance_along_segment_m"],
+            "distance_to_railway_m": selected["distance_to_railway_m"],
+            "chainage_qualification": selected["chainage_qualification"],
+        })
+        return sample
     sample = sample_cell(row, col)
     _, _, route = _read_context()
     epsg = int(sample["projection_epsg"]) if "projection_epsg" in sample else None

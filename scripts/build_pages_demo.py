@@ -7,7 +7,9 @@ screen. It never calculates displacement or edits the source HDF5.
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
+import zipfile
 from pathlib import Path
 
 import h5py
@@ -32,6 +34,7 @@ from backend.radar_evidence import (
 )
 
 OUT = ROOT / "docs" / "data"
+ARCHIVE = ROOT / "data" / "strainline_deployment_evidence.zip"
 
 
 def _route_cells() -> tuple[list[dict], tuple[int, int]]:
@@ -51,6 +54,14 @@ def _route_cells() -> tuple[list[dict], tuple[int, int]]:
         dx, dy = float(x[1] - x[0]), float(y[1] - y[0])
         transform = Affine(dx, 0, float(x[0] - dx / 2), 0, dy, float(y[0] - dy / 2))
         route = _project_route(ROUTE, epsg)
+        route_lines = []
+        to_projected_route = Transformer.from_crs(4326, epsg, always_xy=True)
+        from backend.radar_evidence import _iter_lines
+        route_geojson = json.loads(ROUTE.read_text(encoding="utf-8"))
+        for segment_number, line in enumerate(_iter_lines(route_geojson), start=1):
+            projected_line = [to_projected_route.transform(float(point[0]), float(point[1])) for point in line]
+            if len(projected_line) >= 2:
+                route_lines.append((segment_number, projected_line))
         touched = rasterize(
             [(route, 1)], out_shape=phase_ds.shape, transform=transform,
             all_touched=True, dtype="uint8",
@@ -76,6 +87,19 @@ def _route_cells() -> tuple[list[dict], tuple[int, int]]:
                 & decoded["secondary_anomaly_clear"]
             )
             for local, original_idx in enumerate(idx):
+                px, py = float(x[row_cols[local]]), float(y[int(row)])
+                nearest = None
+                for segment_number, line in route_lines:
+                    cumulative = 0.0
+                    for a, b in zip(line, line[1:]):
+                        vx, vy = b[0] - a[0], b[1] - a[1]
+                        length_sq = vx * vx + vy * vy
+                        length = float(np.sqrt(length_sq))
+                        t = 0.0 if length_sq == 0 else max(0.0, min(1.0, ((px - a[0]) * vx + (py - a[1]) * vy) / length_sq))
+                        distance = float(np.hypot(px - (a[0] + t * vx), py - (a[1] + t * vy)))
+                        if nearest is None or distance < nearest[0]:
+                            nearest = (distance, segment_number, cumulative + t * length)
+                        cumulative += length
                 result.append({
                     "row": int(row),
                     "column": int(row_cols[local]),
@@ -90,6 +114,10 @@ def _route_cells() -> tuple[list[dict], tuple[int, int]]:
                     "connected_component": int(components[local]),
                     "raw_mask": int(mask[local]),
                     "passes_screen": bool(valid[local]),
+                    "route_segment": nearest[1] if nearest else None,
+                    "distance_along_segment_m": nearest[2] if nearest else None,
+                    "distance_to_railway_m": nearest[0] if nearest else None,
+                    "chainage_qualification": "Distance along nearest mapped OSM way segment; not official railway chainage.",
                 })
 
     expected_total = int(qa_summary["corridor_raster_cells"])
@@ -106,24 +134,47 @@ def main() -> None:
     info = get_evidence_info()
     if info["granule_id"] != "NISAR_L2_PR_GUNW_032_055_A_017_033_4000_SH_20261004T000450_20261004T000524_20261016T000450_20261016T000524_P05023_N_F_J_001":
         raise RuntimeError("Unexpected GUNW granule identity; refusing static export.")
+    layer_ranges = {}
     for layer in ("phase", "coherence", "components", "validity"):
-        payload, _headers = render_preview(layer)
+        payload, headers = render_preview(layer)
         (OUT / f"{layer}.png").write_bytes(payload)
+        layer_ranges[layer] = {"minimum": headers.get("X-Value-Min"), "maximum": headers.get("X-Value-Max")}
     cells, shape = _route_cells()
     export = {
         "provenance": "Actual NISAR GUNW HDF5 and matching CMR sidecar; no synthetic observations.",
         "grid_shape": [int(shape[0]), int(shape[1])],
         "sample_factor": FACTOR,
+        "preview_layer_ranges": layer_ranges,
         "evidence": info,
         "railway_cells": cells,
     }
     (OUT / "evidence.json").write_text(json.dumps(export, separators=(",", ":")), encoding="utf-8")
+    manifest = {
+        "source_granule": info["granule_id"],
+        "source_cmr_concept_id": info["cmr_concept_id"],
+        "source_sha256_from_download_receipt": info["provenance"]["sha256_recorded"],
+        "source_hdf5_not_included": True,
+        "railway_cells": len(cells),
+        "passing_cells": sum(cell["passes_screen"] for cell in cells),
+        "artifacts": {},
+    }
+    for path in sorted(OUT.iterdir()):
+        if path.is_file() and path.name != "manifest.json":
+            manifest["artifacts"][path.name] = {"size_bytes": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(ARCHIVE, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for path in sorted(OUT.iterdir()):
+            if path.is_file():
+                archive.write(path, arcname=path.name)
     print(json.dumps({
         "granule_id": info["granule_id"],
         "cells": len(cells),
         "valid_cells": sum(cell["passes_screen"] for cell in cells),
         "preview_pixels": info["preview"],
         "output": str(OUT.relative_to(ROOT)),
+        "package_bytes": sum(path.stat().st_size for path in OUT.iterdir() if path.is_file()),
+        "zip_bytes": ARCHIVE.stat().st_size,
     }))
 
 

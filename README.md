@@ -31,17 +31,21 @@ python -m unittest discover -s tests -v
 
 Install only scientific or API dependencies with `python -m pip install -r requirements-science.txt` or `requirements-api.txt`. Earthdata access is optional for metadata search. To enable downloads, copy `.env.example` to `.env` and add a short-lived Earthdata Login token there. The backend reads it locally; never put tokens in browser files or commit `.env`.
 
-## Free public demonstration (GitHub Pages)
+## Free Render deployment
 
-GitHub Pages hosts the read-only Radar Evidence demonstration from [`docs/`](docs/). It does not run the Python API, NASA catalog search, or authenticated download workflow. The static bundle includes small preview images and actual full-resolution values for the 1,478 railway-touched source cells; it does **not** include the 2.33 GB HDF5 product. The export script reads the local HDF5 and CMR sidecar and checks its cell totals against the existing QA calculation before publishing.
+[`render.yaml`](render.yaml) prepares a Render **Free** FastAPI Web Service with no disk. It uses `pip install -r requirements.txt` and `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`; `autoDeployTrigger: off` avoids deployment until you manually trigger it. Connect the public GitHub repository to Render, select **New → Blueprint**, and review that the service plan says **Free** before creating it. The expected public URL is `https://strainline.onrender.com` if that service name is available.
 
-To rebuild the static evidence bundle locally, install `requirements-science.txt` in the Python environment, ensure the exact product and matching CMR sidecar are present in `data/raw/`, and run:
+The 2.33 GB HDF5 and CMR sidecar stay on the local computer and are excluded from Git. The hosted Radar Evidence API loads the compact real-data evidence files in [`docs/data/`](docs/data/): four source-derived PNG previews, exact values and coordinates for all 1,478 railway-touched source cells, product metadata, QA findings, limitations, and a SHA-256 manifest. The current extracted bundle is about 2.8 MB (ZIP: about 2.1 MB). Radar previews, metadata, and railway-cell inspection therefore work without HDF5 on Render. Arbitrary off-railway pixel inspection, HDF5 inspection, and product download are explicitly local-only on the hosted instance. The other five workspaces remain available; workflows that need uploaded rasters, a full GUNW, or persistent server-side files need those inputs locally or must be run in the local Windows app.
+
+To rebuild the deployment evidence package, install the project requirements, make sure the exact source HDF5 and matching CMR sidecar are present in `data/raw/`, then run:
 
 ```powershell
 python scripts/build_pages_demo.py
 ```
 
-For a free public repository, push the project and choose **Settings → Pages → Deploy from a branch → `main` → `/docs`**. The site is then available at `https://<github-username>.github.io/<repository>/`. GitHub Pages serves static files only. Keep `.env`, `EARTHDATA_TOKEN.env`, the source HDF5 and its sidecar out of Git; the current ignore rules do so. Never add Earthdata credentials to Pages or browser code.
+The build refuses to proceed if product identity or the 1,478/1,471 QA cross-check fails. It writes the previews, cell samples, manifest and compressed archive. Keep `.env`, `.env.*` (except the harmless `.env.example` template), `EARTHDATA_TOKEN.env`, the source HDF5, sidecar and other credentials out of Git. Do not add Earthdata credentials as Render environment variables; public evidence does not need them.
+
+Render Free services have an ephemeral filesystem, sleep after 15 minutes without traffic and can take about a minute to wake. Free plans also have monthly instance-hour, bandwidth and build limits. No disk is provisioned and the service can be suspended if included usage is exhausted without a payment method. The service is suitable for a public judge demo, not dependable production uptime or durable uploads. See [Render's Free plan limits](https://render.com/docs/free).
 
 ## Architecture
 

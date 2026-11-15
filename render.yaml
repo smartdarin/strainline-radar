@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: strainline
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: PYTHONUNBUFFERED
+        value: "true"
+      - key: STRAINLINE_PACKAGED_EVIDENCE
+        value: "1"

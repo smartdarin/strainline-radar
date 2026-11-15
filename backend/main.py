@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -34,6 +35,7 @@ from backend.radar_evidence import get_evidence_info, locate_route_cell, render_
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
+PACKAGED_DEPLOYMENT = os.environ.get("STRAINLINE_PACKAGED_EVIDENCE", "").strip() == "1"
 app = FastAPI(title="StrainLine Ground Context Intelligence", version="0.2.0")
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
@@ -117,7 +119,11 @@ class TemporalExportRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "real_nisar_loaded": False, "dual_band": "unavailable", "temporal": "unavailable"}
+    from backend.radar_evidence import DEMO_DATA, PRODUCT
+    packaged = (DEMO_DATA / "evidence.json").is_file() and (PACKAGED_DEPLOYMENT or not PRODUCT.is_file())
+    return {"status": "ok", "real_nisar_loaded": PRODUCT.is_file() or packaged,
+            "data_mode": "packaged_real_evidence" if packaged else "local_hdf5" if PRODUCT.is_file() else "no_product",
+            "hdf5_local_only": packaged, "dual_band": "unavailable", "temporal": "unavailable"}
 
 
 @app.get("/api/radar-evidence")
@@ -258,6 +264,8 @@ async def catalog_post(request: CatalogRequest):
 
 @app.post("/api/download")
 def download(request: DownloadRequest):
+    if PACKAGED_DEPLOYMENT:
+        raise HTTPException(503, "Product downloads are disabled on the public ephemeral service. Use the local Windows workflow with your private Earthdata credentials and HDF5 storage.")
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,180}", request.filename) or request.filename in (".", ".."):
         raise HTTPException(422, "Use a simple product filename without path components.")
     destination = ROOT / "data" / "raw" / request.filename
@@ -360,6 +368,8 @@ def _redact_url(value):
 
 @app.post("/api/inspect-gunw")
 def inspect_local_gunw(request: InspectGunwRequest):
+    if PACKAGED_DEPLOYMENT:
+        raise HTTPException(503, "Full-product HDF5 inspection is local-only. The public service includes the verified compact evidence package.")
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,180}", request.filename) or request.filename in (".", ".."):
         raise HTTPException(422, "Use a simple product filename without path components.")
     source = ROOT / "data" / "raw" / request.filename
