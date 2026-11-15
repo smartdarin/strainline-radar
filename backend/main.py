@@ -35,6 +35,7 @@ from backend.radar_evidence import get_evidence_info, locate_route_cell, render_
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
+DEMO_ROUTE = ROOT / "StrainLine_Data" / "00_AOI" / "route" / "kalka_shimla_railway_osm_relation_331109.geojson"
 PACKAGED_DEPLOYMENT = os.environ.get("STRAINLINE_PACKAGED_EVIDENCE", "").strip() == "1"
 app = FastAPI(title="StrainLine Ground Context Intelligence", version="0.2.0")
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
@@ -124,6 +125,15 @@ def health():
     return {"status": "ok", "real_nisar_loaded": PRODUCT.is_file() or packaged,
             "data_mode": "packaged_real_evidence" if packaged else "local_hdf5" if PRODUCT.is_file() else "no_product",
             "hdf5_local_only": packaged, "dual_band": "unavailable", "temporal": "unavailable"}
+
+
+@app.get("/api/demo-corridor")
+def demo_corridor():
+    """Provide the attributed Kalka–Shimla GeoJSON included with the public demo."""
+    try:
+        return json.loads(DEMO_ROUTE.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "The included Kalka–Shimla demo corridor is unavailable.") from exc
 
 
 @app.get("/api/radar-evidence")

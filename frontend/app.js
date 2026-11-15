@@ -260,18 +260,41 @@ function geojsonFootprint(umm){
   for(const item of polygons){const points=item?.Boundary?.Points||[];const coords=points.filter(p=>Number.isFinite(Number(p.Longitude))&&Number.isFinite(Number(p.Latitude))).map(p=>[Number(p.Longitude),Number(p.Latitude)]);if(coords.length>=3){if(coords[0][0]!==coords.at(-1)[0]||coords[0][1]!==coords.at(-1)[1])coords.push(coords[0]);features.push({type:'Feature',properties:{source:'NASA CMR UMM'},geometry:{type:'Polygon',coordinates:[coords]}});}}
   return {type:'FeatureCollection',features};
 }
+
+function showCorridor(geo, label) {
+  getLineCoordinates(geo);
+  state.corridor = geo;
+  corridorLayer.clearLayers().addData(geo);
+  laneLayer.clearLayers();
+  const bounds = corridorLayer.getBounds(); if (bounds.isValid()) map.fitBounds(bounds.pad(.12));
+  $('#corridorLabel').textContent = label;
+  $('#mapStatus').textContent = `${label} · WGS84 corridor · archive candidates still require exact footprint review`;
+  $('#analysisStatus').textContent = 'Load compatible lane observations and their provenance separately.';
+}
+
+$('#demoVersionBtn').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true; button.textContent = 'Loading real-data demo…';
+  try {
+    const corridor = await api('/api/demo-corridor');
+    showCorridor(corridor, 'Kalka–Shimla railway · included demo');
+    $('#corridorName').value = 'Kalka–Shimla Railway';
+    $('#catalogCollection').value = 'provisional';
+    showView('radar');
+    $('#radarSamplePrompt').textContent = 'Demo corridor loaded. Select its railway overlay to inspect a packaged full-resolution source cell.';
+    $('#radarLoading').textContent = 'Real NISAR evidence is packaged and ready; the source HDF5 is not needed for this demo.';
+  } catch (error) {
+    $('#mapStatus').textContent = `Demo corridor unavailable: ${error.message}`;
+  } finally {
+    button.disabled = false; button.innerHTML = 'Open demo version <span>↗</span>';
+  }
+});
+
 $('#corridorFile').addEventListener('change', async event => {
   try {
     const file = event.target.files[0]; if (!file) return;
     const geo = JSON.parse(await file.text());
-    getLineCoordinates(geo);
-    state.corridor = geo;
-    corridorLayer.clearLayers().addData(geo);
-    laneLayer.clearLayers();
-    const bounds = corridorLayer.getBounds(); if (bounds.isValid()) map.fitBounds(bounds.pad(.12));
-    $('#corridorLabel').textContent = file.name;
-    $('#mapStatus').textContent = `${file.name} · local route · archive candidates still require exact footprint review`;
-    $('#analysisStatus').textContent = 'Load the compatible lane observations and their provenance separately.';
+    showCorridor(geo, file.name);
   } catch (error) { $('#mapStatus').textContent = error.message; }
 });
 

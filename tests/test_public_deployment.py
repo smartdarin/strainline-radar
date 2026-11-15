@@ -28,6 +28,11 @@ class PublicDeploymentTests(unittest.TestCase):
         page = Path(main.FRONTEND / "index.html").read_text(encoding="utf-8")
         for label in ("Corridor", "Ground context", "Robustness lab", "Field cases", "Data & provenance", "Radar evidence"):
             self.assertIn(label, page)
+        self.assertIn('id="demoVersionBtn"', page)
+        self.assertIn("Open demo version", page)
+        self.assertIn("packaged real NISAR evidence", page)
+        frontend_script = Path(main.FRONTEND / "app.js").read_text(encoding="utf-8")
+        self.assertIn("/api/demo-corridor", frontend_script)
         route_paths = {route.path for route in main.app.routes}
         for path in ("/", "/static", "/api/health", "/api/radar-evidence", "/api/radar-evidence/preview/{layer}", "/api/radar-evidence/sample", "/api/radar-evidence/route-location"):
             self.assertIn(path, route_paths)
@@ -40,6 +45,13 @@ class PublicDeploymentTests(unittest.TestCase):
         self.assertEqual(info["route_coverage"]["cells_valid"], 1471)
         self.assertTrue(info["provenance"]["evidence_package_verified"])
         self.assertFalse(info["provenance"]["hdf5_present_on_service"])
+
+    def test_demo_corridor_endpoint_returns_attributed_osm_geometry(self):
+        corridor = main.demo_corridor()
+        self.assertEqual(corridor["type"], "FeatureCollection")
+        properties = corridor["features"][0]["properties"]
+        self.assertEqual(properties["source_relation_id"], 331109)
+        self.assertIn("OpenStreetMap contributors", properties["attribution"])
 
     def test_all_four_layers_are_served_from_the_verified_package(self):
         for layer in ("phase", "coherence", "components", "validity"):
